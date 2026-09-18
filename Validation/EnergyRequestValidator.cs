@@ -53,6 +53,12 @@ public class EnergyRequestValidator : IEnergyRequestValidator
             for (int i = 0; i < request.Hours.Count; i++)
             {
                 var h = request.Hours[i];
+                if (h == null)
+                {
+                    errors.Add($"Hour record at index {i} cannot be null.");
+                    continue;
+                }
+
                 if (h.Hour < 0 || h.Hour > 23)
                 {
                     errors.Add($"Hour record at index {i} has invalid hour value {h.Hour}. Must be 0 to 23.");
@@ -63,17 +69,29 @@ public class EnergyRequestValidator : IEnergyRequestValidator
                     errors.Add($"Duplicate hour {h.Hour} found in 'hours' array.");
                 }
 
-                if (h.DemandKwh < 0)
+                if (!double.IsFinite(h.DemandKwh))
+                {
+                    errors.Add($"Hour {h.Hour}: demand_kwh must be a finite number.");
+                }
+                else if (h.DemandKwh < 0)
                 {
                     errors.Add($"Hour {h.Hour}: demand_kwh must be non-negative (received {h.DemandKwh}).");
                 }
 
-                if (h.SolarKwh < 0)
+                if (!double.IsFinite(h.SolarKwh))
+                {
+                    errors.Add($"Hour {h.Hour}: solar_kwh must be a finite number.");
+                }
+                else if (h.SolarKwh < 0)
                 {
                     errors.Add($"Hour {h.Hour}: solar_kwh must be non-negative (received {h.SolarKwh}).");
                 }
 
-                if (h.TariffBdtPerKwh < 0)
+                if (!double.IsFinite(h.TariffBdtPerKwh))
+                {
+                    errors.Add($"Hour {h.Hour}: tariff_bdt_per_kwh must be a finite number.");
+                }
+                else if (h.TariffBdtPerKwh < 0)
                 {
                     errors.Add($"Hour {h.Hour}: tariff_bdt_per_kwh must be non-negative (received {h.TariffBdtPerKwh}).");
                 }
@@ -98,17 +116,29 @@ public class EnergyRequestValidator : IEnergyRequestValidator
         else
         {
             var b = request.Battery;
-            if (b.CapacityKwh <= 0)
+            if (!double.IsFinite(b.CapacityKwh))
+            {
+                errors.Add("battery.capacity_kwh must be a finite number.");
+            }
+            else if (b.CapacityKwh <= 0)
             {
                 errors.Add($"battery.capacity_kwh must be greater than zero (received {b.CapacityKwh}).");
             }
 
-            if (b.MinimumEnergyKwh < 0)
+            if (!double.IsFinite(b.MinimumEnergyKwh))
+            {
+                errors.Add("battery.minimum_energy_kwh must be a finite number.");
+            }
+            else if (b.MinimumEnergyKwh < 0)
             {
                 errors.Add($"battery.minimum_energy_kwh must be non-negative (received {b.MinimumEnergyKwh}).");
             }
 
-            if (b.InitialEnergyKwh < 0)
+            if (!double.IsFinite(b.InitialEnergyKwh))
+            {
+                errors.Add("battery.initial_energy_kwh must be a finite number.");
+            }
+            else if (b.InitialEnergyKwh < 0)
             {
                 errors.Add($"battery.initial_energy_kwh must be non-negative (received {b.InitialEnergyKwh}).");
             }
@@ -131,12 +161,20 @@ public class EnergyRequestValidator : IEnergyRequestValidator
                 }
             }
 
-            if (b.MaxChargeKwhPerHour < 0)
+            if (!double.IsFinite(b.MaxChargeKwhPerHour))
+            {
+                errors.Add("battery.max_charge_kwh_per_hour must be a finite number.");
+            }
+            else if (b.MaxChargeKwhPerHour < 0)
             {
                 errors.Add($"battery.max_charge_kwh_per_hour must be non-negative (received {b.MaxChargeKwhPerHour}).");
             }
 
-            if (b.MaxDischargeKwhPerHour < 0)
+            if (!double.IsFinite(b.MaxDischargeKwhPerHour))
+            {
+                errors.Add("battery.max_discharge_kwh_per_hour must be a finite number.");
+            }
+            else if (b.MaxDischargeKwhPerHour < 0)
             {
                 errors.Add($"battery.max_discharge_kwh_per_hour must be non-negative (received {b.MaxDischargeKwhPerHour}).");
             }

@@ -64,19 +64,19 @@ public class OptimizationEngineTests
         Assert.Equal(24, result.HourlyPlan.Count);
 
         // Optimal total cost is 38365 BDT
-        Assert.True(Math.Abs(result.TotalCostBdt - 38365) <= 0.05,
+        Assert.True(Math.Abs(result.TotalCostBdt - 38365) <= 0.01,
             $"Optimal cost mismatch: {result.TotalCostBdt}, expected 38365");
 
         // Optimal total grid is 2692.5 kWh
-        Assert.True(Math.Abs(result.TotalGridKwh - 2692.5) <= 0.05,
+        Assert.True(Math.Abs(result.TotalGridKwh - 2692.5) <= 0.01,
             $"Total grid mismatch: {result.TotalGridKwh}, expected 2692.5");
 
         // Peak grid is 175 kWh
-        Assert.True(Math.Abs(result.PeakGridKwh - 175) <= 0.05,
+        Assert.True(Math.Abs(result.PeakGridKwh - 175) <= 0.01,
             $"Peak grid mismatch: {result.PeakGridKwh}, expected 175");
 
         // Battery neutrality: final energy equals initial energy (110 kWh)
-        Assert.True(Math.Abs(result.HourlyPlan[23].BatteryEnergyAfterKwh - request.Battery.InitialEnergyKwh) <= 0.05);
+        Assert.True(Math.Abs(result.HourlyPlan[23].BatteryEnergyAfterKwh - request.Battery.InitialEnergyKwh) <= 0.01);
     }
 
     [Fact]
@@ -166,8 +166,55 @@ public class OptimizationEngineTests
         Assert.True(result.Success);
         foreach (int h in new[] { 18, 19, 20 })
         {
-            Assert.True(result.HourlyPlan[h].GridKwh <= 155.05,
+            Assert.True(result.HourlyPlan[h].GridKwh <= 155.01,
                 $"Hour {h}: grid import {result.HourlyPlan[h].GridKwh} exceeds 155 kWh");
         }
+    }
+
+    [Fact]
+    public void Optimize_ReorderedHourInput_UsesHourFieldRatherThanArrayPosition()
+    {
+        var testDataPath = Path.Combine(AppContext.BaseDirectory, "TestData", "sample_cases.json");
+        var json = File.ReadAllText(testDataPath);
+        using var doc = JsonDocument.Parse(json);
+        var sample01 = doc.RootElement.GetProperty("cases")[0];
+        var request = JsonSerializer.Deserialize<EnergyRequest>(sample01.GetProperty("input").GetRawText(), JsonOptions)!;
+        request.Hours.Reverse();
+
+        var directives = new List<DirectiveInterpretationDto>
+        {
+            new()
+            {
+                NoteIndex = 0,
+                Applies = true,
+                DirectiveType = DirectiveType.SolarReduction,
+                StructuredAdjustment = new StructuredAdjustment
+                {
+                    Hours = new List<int> { 12, 13 },
+                    Factor = 0.25
+                }
+            },
+            new()
+            {
+                NoteIndex = 1,
+                Applies = false,
+                DirectiveType = DirectiveType.NoOp,
+                StructuredAdjustment = null
+            }
+        };
+
+        var result = _optimizer.Optimize(request, directives);
+
+        Assert.True(result.Success);
+        Assert.Equal(Enumerable.Range(0, 24), result.HourlyPlan.Select(plan => plan.Hour));
+        Assert.True(Math.Abs(result.TotalCostBdt - 38365) <= 0.01,
+            $"Reordered input changed optimal cost to {result.TotalCostBdt}.");
+
+        var hourZero = request.Hours.Single(hour => hour.Hour == 0);
+        var planZero = result.HourlyPlan[0];
+        var discharge = planZero.BatteryAction == BatteryAction.Discharge ? planZero.BatteryKwh : 0;
+        var charge = planZero.BatteryAction == BatteryAction.Charge ? planZero.BatteryKwh : 0;
+        Assert.True(Math.Abs(planZero.GridKwh + planZero.SolarUsedKwh + discharge -
+                             (hourZero.DemandKwh + charge)) <= 0.01);
     }
 }

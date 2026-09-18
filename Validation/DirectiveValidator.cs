@@ -26,6 +26,11 @@ public class DirectiveValidator : IDirectiveValidator
             errors.Add($"Invalid directive_type: '{directive.DirectiveType}'. Allowed types: {string.Join(", ", DirectiveType.All)}.");
         }
 
+        if (string.IsNullOrWhiteSpace(directive.Explanation))
+        {
+            errors.Add("Directive explanation cannot be empty.");
+        }
+
         // 2. No-Op validation
         if (string.Equals(directive.DirectiveType, DirectiveType.NoOp, StringComparison.OrdinalIgnoreCase))
         {
@@ -94,6 +99,10 @@ public class DirectiveValidator : IDirectiveValidator
                 {
                     errors.Add("Directive 'solar_reduction' requires 'factor'.");
                 }
+                else if (!double.IsFinite(adj.Factor.Value))
+                {
+                    errors.Add("Solar factor must be a finite number.");
+                }
                 else if (adj.Factor.Value < 0.0 || adj.Factor.Value > 1.0)
                 {
                     errors.Add($"Solar factor must be between 0.0 and 1.0. Received {adj.Factor.Value}.");
@@ -117,7 +126,11 @@ public class DirectiveValidator : IDirectiveValidator
                 }
                 else
                 {
-                    if (adj.MinimumEnergyKwh.Value < 0)
+                    if (!double.IsFinite(adj.MinimumEnergyKwh.Value))
+                    {
+                        errors.Add("minimum_energy_kwh must be a finite number.");
+                    }
+                    else if (adj.MinimumEnergyKwh.Value < 0)
                     {
                         errors.Add($"minimum_energy_kwh must be non-negative. Received {adj.MinimumEnergyKwh.Value}.");
                     }
@@ -143,6 +156,10 @@ public class DirectiveValidator : IDirectiveValidator
                 if (!adj.MaxGridKwh.HasValue)
                 {
                     errors.Add("Directive 'max_grid_window' requires 'max_grid_kwh'.");
+                }
+                else if (!double.IsFinite(adj.MaxGridKwh.Value))
+                {
+                    errors.Add("max_grid_kwh must be a finite number.");
                 }
                 else if (adj.MaxGridKwh.Value < 0)
                 {

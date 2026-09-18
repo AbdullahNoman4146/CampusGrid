@@ -18,8 +18,8 @@ RUN dotnet publish "CampusGrid.csproj" -c Release -o /app/publish /p:UseAppHost=
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app
 
-# Ensure binding to all interfaces on port 8080
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+# Default to port 8080; deployment platforms may override PORT.
+ENV PORT=8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_RUNNING_IN_CONTAINER=true
 

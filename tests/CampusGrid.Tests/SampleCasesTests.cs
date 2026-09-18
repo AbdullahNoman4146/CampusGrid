@@ -8,7 +8,7 @@ using Xunit;
 
 namespace CampusGrid.Tests;
 
-public class SampleCasesTests : IClassFixture<WebApplicationFactory<Program>>
+public class SampleCasesTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -16,7 +16,7 @@ public class SampleCasesTests : IClassFixture<WebApplicationFactory<Program>>
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
-    public SampleCasesTests(WebApplicationFactory<Program> factory)
+    public SampleCasesTests(TestWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
     }
@@ -124,7 +124,7 @@ public class SampleCasesTests : IClassFixture<WebApplicationFactory<Program>>
 
         // 4. Verify End-of-Day Battery Neutrality
         var finalBatteryEnergy = actualResponse.HourlyPlan[23].BatteryEnergyAfterKwh;
-        Assert.True(Math.Abs(finalBatteryEnergy - originalRequest.Battery.InitialEnergyKwh) < 0.05,
+        Assert.True(Math.Abs(finalBatteryEnergy - originalRequest.Battery.InitialEnergyKwh) <= 0.01,
             $"Battery neutrality violated in {caseId}: expected {originalRequest.Battery.InitialEnergyKwh}, got {finalBatteryEnergy}");
 
         // 5. Verify Hourly Energy Balance for each hour
@@ -139,20 +139,20 @@ public class SampleCasesTests : IClassFixture<WebApplicationFactory<Program>>
 
             double lhs = plan.GridKwh + plan.SolarUsedKwh + discharge;
             double rhs = hourData.DemandKwh + charge;
-            Assert.True(Math.Abs(lhs - rhs) < 0.05,
+            Assert.True(Math.Abs(lhs - rhs) <= 0.01,
                 $"Energy balance violated at hour {h} in {caseId}: {lhs} != {rhs}");
 
             // Transition check
             double expectedEnergy = prevEnergy + charge - discharge;
-            Assert.True(Math.Abs(plan.BatteryEnergyAfterKwh - expectedEnergy) < 0.05,
+            Assert.True(Math.Abs(plan.BatteryEnergyAfterKwh - expectedEnergy) <= 0.01,
                 $"Battery transition violated at hour {h} in {caseId}: {plan.BatteryEnergyAfterKwh} != {expectedEnergy}");
 
             prevEnergy = plan.BatteryEnergyAfterKwh;
         }
 
-        // 6. Verify Optimal Total Cost within official tolerance (0.05 BDT)
+        // 6. Verify optimal total cost within the canonical 0.01 BDT tolerance
         double costDiff = Math.Abs(actualResponse.TotalCostBdt - expectedResponse.TotalCostBdt);
-        Assert.True(costDiff <= 0.05,
+        Assert.True(costDiff <= 0.01,
             $"Total cost mismatch for {caseId}: expected {expectedResponse.TotalCostBdt}, got {actualResponse.TotalCostBdt} (Diff: {costDiff})");
     }
 }

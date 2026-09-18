@@ -1,6 +1,7 @@
 using CampusGrid.Models.Domain;
 using CampusGrid.Models.Dto;
 using CampusGrid.Validation;
+using System.Text.Json;
 using Xunit;
 
 namespace CampusGrid.Tests;
@@ -180,5 +181,29 @@ public class GuardrailValidationTests
         };
 
         Assert.Throws<DirectiveValidationException>(() => _validator.Validate(directive, battery));
+    }
+
+    [Fact]
+    public void Serialize_ActiveDirective_ContainsOnlyRequiredAdjustmentShape()
+    {
+        var directive = new DirectiveInterpretationDto
+        {
+            NoteIndex = 0,
+            Applies = true,
+            DirectiveType = DirectiveType.SolarReduction,
+            StructuredAdjustment = new StructuredAdjustment
+            {
+                Hours = new List<int> { 13, 14 },
+                Factor = 0.2
+            },
+            Explanation = "Solar output is reduced."
+        };
+
+        var json = JsonSerializer.Serialize(directive);
+
+        Assert.Contains("\"hours\":[13,14]", json);
+        Assert.Contains("\"factor\":0.2", json);
+        Assert.DoesNotContain("minimum_energy_kwh", json);
+        Assert.DoesNotContain("max_grid_kwh", json);
     }
 }

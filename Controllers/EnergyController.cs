@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using CampusGrid.Models.Common;
 using CampusGrid.Models.Dto;
+using CampusGrid.LLM;
 using CampusGrid.Services;
 using CampusGrid.Validation;
 
@@ -16,21 +17,6 @@ public class EnergyController : ControllerBase
     {
         _energyService = energyService;
         _logger = logger;
-    }
-
-    [HttpGet("optimize-energy")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult GetOptimizeEnergyInfo()
-    {
-        return Ok(new
-        {
-            status = "ready",
-            endpoint = "/optimize-energy",
-            accepted_method = "POST",
-            message = "This endpoint requires an HTTP POST request with a JSON scenario body. Use the interactive Swagger UI or curl to test.",
-            interactive_docs = "/swagger",
-            sample_post_curl = "curl.exe -k -X POST https://localhost:7116/optimize-energy -H \"Content-Type: application/json\" -d @scenario.json"
-        });
     }
 
     [HttpPost("optimize-energy")]
@@ -64,6 +50,16 @@ public class EnergyController : ControllerBase
                 Message = ex.Message,
                 Details = ex.ValidationErrors,
                 StatusCode = StatusCodes.Status422UnprocessableEntity
+            });
+        }
+        catch (LLMServiceUnavailableException ex)
+        {
+            _logger.LogError(ex, "LLM interpretation service is unavailable.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Error = "Internal Server Error",
+                Message = "The language-model interpreter is temporarily unavailable.",
+                StatusCode = StatusCodes.Status500InternalServerError
             });
         }
         catch (Exception ex)

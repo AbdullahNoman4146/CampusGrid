@@ -35,22 +35,34 @@ public class EnergyService : IEnergyService
     {
         // 1. Validate Input JSON and semantic constraints
         _requestValidator.Validate(request);
+        var normalizedRequest = EnergyRequestNormalizer.NormalizeHours(request);
 
-        // 2. Interpret operator notes via LLM (with fallback) and validate through guardrails
-        var directives = new List<DirectiveInterpretationDto>();
-        for (int i = 0; i < request.OperatorNotes.Count; i++)
+        // 2. Interpret all notes in one bounded LLM call and validate through guardrails
+        var interpreted = await _llmInterpreter.InterpretAllAsync(
+            normalizedRequest.OperatorNotes,
+            normalizedRequest.Battery,
+            cancellationToken);
+
+        if (interpreted.Count != normalizedRequest.OperatorNotes.Count)
         {
-            var note = request.OperatorNotes[i];
-            var interpretation = await _llmInterpreter.InterpretAsync(note, i, request.Battery, cancellationToken);
+            throw new DirectiveValidationException(
+                $"The LLM returned {interpreted.Count} directives for {normalizedRequest.OperatorNotes.Count} operator notes.");
+        }
 
-            // Guardrail validation of untrusted LLM output
-            _directiveValidator.Validate(interpretation, request.Battery);
+        var directives = interpreted.OrderBy(d => d.NoteIndex).ToList();
+        for (int i = 0; i < directives.Count; i++)
+        {
+            if (directives[i].NoteIndex != i)
+            {
+                throw new DirectiveValidationException(
+                    $"The LLM response must contain exactly one directive for note index {i}.");
+            }
 
-            directives.Add(interpretation);
+            _directiveValidator.Validate(directives[i], normalizedRequest.Battery);
         }
 
         // 3. Formulate and solve the mathematical optimization model
-        var optResult = _energyOptimizer.Optimize(request, directives);
+        var optResult = _energyOptimizer.Optimize(normalizedRequest, directives);
         if (!optResult.Success)
         {
             _logger.LogWarning("Optimization failed for scenario {ScenarioId}: {Error}", request.ScenarioId, optResult.ErrorMessage);
@@ -60,17 +72,17 @@ public class EnergyService : IEnergyService
         // 4. Construct response DTO
         var response = new EnergyResponse
         {
-            ScenarioId = request.ScenarioId,
+            ScenarioId = normalizedRequest.ScenarioId,
             DirectiveInterpretation = directives,
             HourlyPlan = optResult.HourlyPlan,
             TotalGridKwh = optResult.TotalGridKwh,
             TotalCostBdt = optResult.TotalCostBdt,
             PeakGridKwh = optResult.PeakGridKwh,
-            PlanSummary = GeneratePlanSummary(request, optResult, directives)
+            PlanSummary = GeneratePlanSummary(normalizedRequest, optResult, directives)
         };
 
         // 5. Final deterministic schedule validation
-        _scheduleValidator.Validate(response, request, directives);
+        _scheduleValidator.Validate(response, normalizedRequest, directives);
 
         return response;
     }

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Mvc.Testing;
 using CampusGrid.Models.Common;
 using CampusGrid.Models.Domain;
@@ -9,7 +10,7 @@ using Xunit;
 
 namespace CampusGrid.Tests;
 
-public class RequestValidationTests : IClassFixture<WebApplicationFactory<Program>>
+public class RequestValidationTests : IClassFixture<TestWebApplicationFactory>
 {
     private readonly HttpClient _client;
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -17,7 +18,7 @@ public class RequestValidationTests : IClassFixture<WebApplicationFactory<Progra
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
     };
 
-    public RequestValidationTests(WebApplicationFactory<Program> factory)
+    public RequestValidationTests(TestWebApplicationFactory factory)
     {
         _client = factory.CreateClient();
     }
@@ -101,6 +102,40 @@ public class RequestValidationTests : IClassFixture<WebApplicationFactory<Progra
         var error = JsonSerializer.Deserialize<ApiErrorResponse>(body, JsonOptions);
         Assert.NotNull(error);
         Assert.Equal(422, error.StatusCode);
+    }
+
+    [Fact]
+    public async Task OptimizeEnergy_MissingRequiredDemandField_Returns400BadRequest()
+    {
+        var node = JsonSerializer.SerializeToNode(CreateValidRequest(), JsonOptions)!.AsObject();
+        node["hours"]!.AsArray()[0]!.AsObject().Remove("demand_kwh");
+        var content = new StringContent(node.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var response = await _client.PostAsync("/optimize-energy", content);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OptimizeEnergy_NullHourEntry_Returns422InsteadOf500()
+    {
+        var node = JsonSerializer.SerializeToNode(CreateValidRequest(), JsonOptions)!.AsObject();
+        node["hours"]!.AsArray()[5] = null;
+        var content = new StringContent(node.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var response = await _client.PostAsync("/optimize-energy", content);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
+    public void Validator_NonFiniteDemand_IsRejected()
+    {
+        var request = CreateValidRequest();
+        request.Hours[3].DemandKwh = double.NaN;
+        var validator = new CampusGrid.Validation.EnergyRequestValidator();
+
+        Assert.Throws<CampusGrid.Validation.InvalidSemanticInputException>(() => validator.Validate(request));
     }
 
     private static EnergyRequest CreateValidRequest()
