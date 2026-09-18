@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GridWise — Smart Campus Energy Optimization Dashboard</title>
+    <!-- Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for responsive visual charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Bespoke Stylesheet -->
+    <link rel="stylesheet" href="/css/dashboard.css">
+</head>
+<body>
+
+    <!-- Top Navigation -->
+    <header class="navbar">
+        <a href="/" class="nav-brand">
+            <div class="brand-icon">⚡</div>
+            <div class="brand-text">
+                <h1>GridWise</h1>
+                <div class="brand-tag">BUP CSE Fest 2026 · AI Energy Optimization</div>
+            </div>
+        </a>
+
+        <div class="nav-actions">
+            <div class="health-status-badge" id="health-badge">
+                <span class="pulse-dot"></span>
+                <span id="health-text">CHECKING API...</span>
+            </div>
+            <a href="/swagger" target="_blank" class="btn-secondary-nav">
+                <span>Swagger Docs ↗</span>
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="dashboard-container">
+
+        <!-- LEFT COLUMN: Input Studio & Scenario Config -->
+        <section class="studio-column">
+            
+            <!-- Scenario Preset Selector -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">📁 Scenario Presets</h2>
+                    <span class="card-badge">Hackathon Cases</span>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="scenario-select">Select Benchmark Scenario (SAMPLE-01 to 10):</label>
+                    <select id="scenario-select" class="form-select"></select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="scenario-id">Scenario ID:</label>
+                    <input type="text" id="scenario-id" class="form-input" value="SAMPLE-01">
+                </div>
+            </div>
+
+            <!-- Optimization Form -->
+            <form id="optimization-form">
+                
+                <!-- Operator Notes Card -->
+                <div class="glass-card">
+                    <div class="card-header">
+                        <h2 class="card-title">📝 Natural Language Operator Notes</h2>
+                        <span class="card-badge">LLM Directives</span>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" for="operator-notes">Operator Instructions (One directive or distractor per line):</label>
+                        <textarea id="operator-notes" class="form-textarea" placeholder="e.g. Facilities will wash the rooftop solar panels from noon until 2 PM. During cleaning, usable solar should be treated as roughly 25% of forecast."></textarea>
+                    </div>
+                </div>
+
+                <!-- Battery Parameters Card -->
+                <div class="glass-card">
+                    <div class="card-header">
+                        <h2 class="card-title">🔋 Battery Storage Specification</h2>
+                        <span class="card-badge">BESS</span>
+                    </div>
+                    <div class="input-grid-2">
+                        <div class="form-group">
+                            <label class="form-label" for="battery-capacity">Capacity (kWh)</label>
+                            <input type="number" step="any" id="battery-capacity" class="form-input" value="220">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="battery-initial">Initial Energy (kWh)</label>
+                            <input type="number" step="any" id="battery-initial" class="form-input" value="110">
+                        </div>
+                    </div>
+                    <div class="input-grid-3">
+                        <div class="form-group">
+                            <label class="form-label" for="battery-min">Min Reserve (kWh)</label>
+                            <input type="number" step="any" id="battery-min" class="form-input" value="40">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="battery-charge-max">Max Charge (kW)</label>
+                            <input type="number" step="any" id="battery-charge-max" class="form-input" value="50">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label" for="battery-discharge-max">Max Discharge (kW)</label>
+                            <input type="number" step="any" id="battery-discharge-max" class="form-input" value="50">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 24-Hour Forecast Grid (Collapsible) -->
+                <div class="glass-card">
+                    <div class="card-header">
+                        <h2 class="card-title">📊 24-Hour Forecast & Tariff Table</h2>
+                        <span class="card-badge">24 Hours</span>
+                    </div>
+                    <div class="table-responsive" style="max-height: 260px;">
+                        <table class="schedule-table">
+                            <thead>
+                                <tr>
+                                    <th>Hour</th>
+                                    <th>Demand (kWh)</th>
+                                    <th>Solar (kWh)</th>
+                                    <th>Tariff (BDT)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="forecast-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button type="submit" id="btn-optimize" class="btn-primary">
+                    <span id="btn-optimize-spinner" class="spinner hidden"></span>
+                    <span id="btn-optimize-text">⚡ Optimize Energy Schedule</span>
+                </button>
+            </form>
+
+            <!-- Error Banner -->
+            <div id="error-alert" class="glass-card hidden" style="border-left: 4px solid #f43f5e; margin-top: 1rem;">
+                <div class="card-title" style="color: #f43f5e;">⚠ Optimization Error</div>
+                <div id="error-message" style="font-size: 0.85rem; margin-top: 0.4rem;"></div>
+                <ul id="error-details" style="font-size: 0.8rem; margin-top: 0.4rem; padding-left: 1.2rem; color: #fda4af;"></ul>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: Visual Analytics & Optimization Results -->
+        <section class="results-column">
+
+            <!-- Official Benchmark Match Card -->
+            <div id="benchmark-comparison-card" class="glass-card" style="border: 1px solid rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.05); margin-bottom: 1.5rem;">
+                <div class="card-header" style="margin-bottom: 0.6rem;">
+                    <h2 class="card-title" style="color: #34d399;">
+                        <span>🎯 Official Hackathon Benchmark Ground Truth Verification</span>
+                    </h2>
+                    <span id="benchmark-match-badge" class="card-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border-color: #34d399;">100% MATCH</span>
+                </div>
+                <div id="benchmark-rationale" style="font-size: 0.82rem; color: #cbd5e1; margin-bottom: 0.8rem; font-style: italic;"></div>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; background: rgba(15, 23, 42, 0.6); padding: 0.8rem; border-radius: var(--radius-md); font-size: 0.82rem;">
+                    <div>
+                        <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Total Cost (BDT)</div>
+                        <div>Official Ref: <strong id="bench-ref-cost">--</strong></div>
+                        <div>Optimized: <strong id="bench-opt-cost" style="color: #34d399;">--</strong></div>
+                    </div>
+                    <div>
+                        <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Grid Import (kWh)</div>
+                        <div>Official Ref: <strong id="bench-ref-grid">--</strong></div>
+                        <div>Optimized: <strong id="bench-opt-grid" style="color: #38bdf8;">--</strong></div>
+                    </div>
+                    <div>
+                        <div style="color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase;">Peak Draw (kW)</div>
+                        <div>Official Ref: <strong id="bench-ref-peak">--</strong></div>
+                        <div>Optimized: <strong id="bench-opt-peak" style="color: #fbbf24;">--</strong></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Executive KPI Cards -->
+            <div class="kpi-grid">
+                <div class="kpi-card cyan">
+                    <div class="kpi-label">Total Grid Import</div>
+                    <div class="kpi-value"><span id="kpi-total-grid">--</span> <span class="kpi-unit">kWh</span></div>
+                    <div class="kpi-subtext">24-hour campus energy import</div>
+                </div>
+                <div class="kpi-card emerald">
+                    <div class="kpi-label">Total Energy Cost</div>
+                    <div class="kpi-value"><span id="kpi-total-cost">--</span> <span class="kpi-unit">BDT</span></div>
+                    <div class="kpi-subtext">Optimized grid tariff spend</div>
+                </div>
+                <div class="kpi-card amber">
+                    <div class="kpi-label">Peak Grid Load</div>
+                    <div class="kpi-value"><span id="kpi-peak-grid">--</span> <span class="kpi-unit">kW</span></div>
+                    <div class="kpi-subtext">Maximum single-hour draw</div>
+                </div>
+                <div class="kpi-card purple">
+                    <div class="kpi-label">Battery Neutrality</div>
+                    <div class="kpi-value" id="kpi-neutrality">--</div>
+                    <div class="kpi-subtext" id="kpi-neutrality-sub">E₂₃ == E_initial target</div>
+                </div>
+            </div>
+
+            <!-- Plan Summary & Directives Breakdown -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">🤖 LLM Directive Interpretations & Guardrails</h2>
+                    <span class="card-badge">Validated Rules</span>
+                </div>
+                <div id="plan-summary-text" style="font-size: 0.88rem; color: #e2e8f0; margin-bottom: 0.9rem; line-height: 1.45;"></div>
+                <div id="directives-list" class="directives-container"></div>
+            </div>
+
+            <!-- Visual Charts Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem;">
+                <!-- Energy Dispatch Chart -->
+                <div class="glass-card chart-card">
+                    <div class="card-header">
+                        <h2 class="card-title">⚡ 24-Hour Energy Balance</h2>
+                        <span class="card-badge">Supply Stack</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-energy-mix"></canvas>
+                    </div>
+                </div>
+
+                <!-- Battery State of Charge Chart -->
+                <div class="glass-card chart-card">
+                    <div class="card-header">
+                        <h2 class="card-title">🔋 Battery Trajectory (Neutrality Check)</h2>
+                        <span class="card-badge">SOC Curve</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-battery-soc"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 24-Hour Hourly Dispatch Plan Table -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">📋 24-Hour Optimal Dispatch Plan</h2>
+                    <span class="card-badge">Hourly Schedule</span>
+                </div>
+                <div class="table-responsive">
+                    <table class="schedule-table">
+                        <thead>
+                            <tr>
+                                <th>Hour</th>
+                                <th>Grid Import (kWh)</th>
+                                <th>Solar Used (kWh)</th>
+                                <th>Battery Action</th>
+                                <th>Battery (kWh)</th>
+                                <th>Stored After (kWh)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="schedule-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Machine-Checkable JSON Output Inspector -->
+            <div class="glass-card">
+                <div class="card-header">
+                    <h2 class="card-title">📦 Machine-Checkable JSON Response</h2>
+                    <button type="button" id="btn-copy-json" class="btn-secondary">Copy JSON</button>
+                </div>
+                <pre class="json-viewer" id="json-output">// Waiting for optimization execution...</pre>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- App Logic Script -->
+    <script src="/js/dashboard.js"></script>
+</body>
+</html>
