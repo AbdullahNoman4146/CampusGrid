@@ -20,6 +20,8 @@ public class EnergyOptimizer : IEnergyOptimizer
 
     public OptimizationResult Optimize(EnergyRequest request, IEnumerable<DirectiveInterpretationDto> directives)
     {
+        request = EnergyRequestNormalizer.NormalizeHours(request);
+
         // 1. Calculate effective parameters per hour based on active directives
         var effectiveSolar = new double[24];
         var minReserve = new double[24];

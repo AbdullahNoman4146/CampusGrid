@@ -1,6 +1,6 @@
 # GridWise — Smart Campus Energy Optimization API
 
-[![Build & Test](https://img.shields.io/badge/build-passing-brightgreen.svg)](#testing)
+[![Build, test, and publish container](https://github.com/AbdullahNoman4146/CampusGrid/actions/workflows/ci-container.yml/badge.svg)](https://github.com/AbdullahNoman4146/CampusGrid/actions/workflows/ci-container.yml)
 [![.NET](https://img.shields.io/badge/.NET-8.0%20LTS-blue.svg)](https://dotnet.microsoft.com/)
 [![Optimization](https://img.shields.io/badge/Solver-Google%20OR--Tools%20GLOP-orange.svg)](https://developers.google.com/optimization)
 [![Event](https://img.shields.io/badge/Hackathon-BUP%20CSE%20Fest%202026-purple.svg)](#)
@@ -33,8 +33,8 @@ The system follows **Clean Architecture** principles and implements a strict det
 |         |                                                                 |
 |         v                                                                 |
 |  [ILLMInterpreter / LLMInterpreterService]                                |
-|         │  • OpenAI / Azure OpenAI / Local (vLLM, Ollama)                 |
-|         │  • Automatic Semantic NLP Rule Fallback Engine                  |
+|         │  • One batched call for all 1–3 notes                           |
+|         │  • Groq/OpenAI-compatible, Azure OpenAI, or local endpoint       |
 |         v                                                                 |
 |  [DirectiveValidator Guardrail] ─── (Validates types, hours, ranges, etc) |
 |         |                                                                 |
@@ -53,7 +53,7 @@ The system follows **Clean Architecture** principles and implements a strict det
 ### Execution Flow
 
 1. **Request Ingestion**: Validates scenario structure (24 hours, non-negative physical values, valid battery limits).
-2. **LLM Directive Interpretation**: Each operator note (1–3 strings) is parsed via `ILLMInterpreter` into structured directives. Supports paraphrased instructions like maintenance, panel washing, cloud cover, relay testing, feeder limits, and non-actionable distractors (`no_op`).
+2. **LLM Directive Interpretation**: All operator notes (1–3 strings) are sent in one bounded model request and returned as one ordered directive per note. The default Groq model uses strict JSON Schema output. Production fails closed if the model is unavailable; it never silently reports regex output as LLM output.
 3. **Deterministic Guardrails**: The `DirectiveValidator` rigorously validates the LLM output (verifying allowed types, unique ascending hours in [0, 23], solar factor $\in [0, 1]$, reserve $\le$ capacity, and absence of invented parameters).
 4. **Mathematical Optimization**: Formulates and solves a 24-hour continuous Linear Program:
    $$\min \sum_{t=0}^{23} \Big( P_t \cdot \text{grid}_t + 10^{-5} \cdot (\text{charge}_t + \text{discharge}_t) \Big)$$
@@ -95,12 +95,13 @@ Configure via `appsettings.json` or environment variables:
   "LLM": {
     "Provider": "OpenAI",
     "ApiKey": "",
-    "Endpoint": "https://api.openai.com/v1",
-    "Model": "gpt-4o-mini",
+    "Endpoint": "https://api.groq.com/openai/v1",
+    "Model": "openai/gpt-oss-20b",
     "DeploymentName": "",
     "ApiVersion": "2024-02-15-preview",
-    "TimeoutSeconds": 15,
-    "EnableSemanticFallback": true
+    "TimeoutSeconds": 20,
+    "RequestTimeoutSeconds": 28,
+    "MaxAttempts": 2
   }
 }
 ```
@@ -109,15 +110,20 @@ Configure via `appsettings.json` or environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
-| `OPENAI_API_KEY` or `LLM__APIKEY` | API Key for LLM provider | `""` (Uses built-in NLP fallback if empty) |
-| `LLM__PROVIDER` | Provider: `OpenAI`, `AzureOpenAI`, `Local`, `FallbackOnly` | `OpenAI` |
-| `LLM__ENDPOINT` | Base endpoint URL | `https://api.openai.com/v1` |
-| `LLM__MODEL` | Model name | `gpt-4o-mini` |
-| `LLM__ENABLESEMANTICFALLBACK` | Enable deterministic NLP parser if API offline | `true` |
-| `ASPNETCORE_URLS` | HTTP listening URL | `http://0.0.0.0:8080` |
+| `GROQ_API_KEY` or `LLM__ApiKey` | Private backend LLM API key | required for normal execution |
+| `LLM__Provider` | `OpenAI` (OpenAI-compatible), `AzureOpenAI`, or `Local` | `OpenAI` |
+| `LLM__Endpoint` | Base endpoint URL | `https://api.groq.com/openai/v1` |
+| `LLM__Model` | Model name | `openai/gpt-oss-20b` |
+| `LLM__TimeoutSeconds` | Per-attempt model deadline (maximum 25 seconds) | `20` |
+| `LLM__RequestTimeoutSeconds` | Whole model/retry budget, clamped below judge timeout | `28` |
+| `LLM__MaxAttempts` | Model attempts, clamped to 1–2 | `2` |
+| `PORT` | Hosting port; supported for platforms such as Render | Docker defaults to `8080` |
+| `ASPNETCORE_URLS` | Optional ASP.NET URL override (takes precedence over `PORT`) | launch-profile dependent |
 
-> [!NOTE]
-> **Zero-Configuration Fallback**: If no API key is provided or the network is offline, the service automatically utilizes its built-in **Semantic Rule Fallback Interpreter**. It passes 100% of benchmark test cases without requiring external cloud access.
+> [!IMPORTANT]
+> Do not commit an API key. Missing credentials or an invalid model response returns a controlled HTTP `500`; the service does not silently bypass the challenge's LLM requirement. Deterministic public-case behavior exists only in the test assembly for optimizer regression tests.
+
+The default model and strict-output capability are listed in Groq's [supported models](https://console.groq.com/docs/models) and [Structured Outputs documentation](https://console.groq.com/docs/structured-outputs).
 
 ---
 
@@ -125,6 +131,28 @@ Configure via `appsettings.json` or environment variables:
 
 ### Prerequisites
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+
+### Visual Studio 2022 setup
+
+1. Open `CampusGrid.slnx` in Visual Studio 2022 with the **ASP.NET and web development** workload installed.
+2. Right-click the `CampusGrid` project and select **Manage User Secrets**.
+3. Add your private Groq key:
+
+```json
+{
+  "LLM": {
+    "ApiKey": "gsk_your_private_key"
+  }
+}
+```
+
+4. Select the `https` launch profile and run the project. Open Swagger at `https://localhost:7116/swagger`; the dashboard is at `https://localhost:7116/`.
+
+The equivalent command-line setup is:
+
+```bash
+dotnet user-secrets set "LLM:ApiKey" "gsk_your_private_key" --project CampusGrid.csproj
+```
 
 ### 1. Build the Project
 ```bash
@@ -135,8 +163,7 @@ dotnet build
 ```bash
 dotnet run --project CampusGrid.csproj
 ```
-The API will be available at `http://localhost:5000` or `http://localhost:8080`.
-Swagger UI is accessible in Development mode at `/swagger`.
+The checked-in launch profiles use `https://localhost:7116` and `http://localhost:5014`. Swagger is available at `/swagger`.
 
 ---
 
@@ -152,9 +179,32 @@ docker build -t gridwise-api .
 docker run -d -p 8080:8080 --name gridwise gridwise-api
 ```
 
-With custom OpenAI API Key:
+With a private Groq key:
 ```bash
-docker run -d -p 8080:8080 -e OPENAI_API_KEY="your-api-key" --name gridwise gridwise-api
+docker run -d -p 8080:8080 -e GROQ_API_KEY="your-api-key" --name gridwise gridwise-api
+```
+
+Or copy `.env.example` to an untracked `.env`, set the private key, and run:
+
+```bash
+docker run --rm -p 8080:8080 --env-file .env --name gridwise gridwise-api
+```
+
+### Published fallback image
+
+Every successful push to `main` runs the test suite, verifies the Docker build, and publishes these GitHub Container Registry tags:
+
+```text
+ghcr.io/abdullahnoman4146/campusgrid:latest
+ghcr.io/abdullahnoman4146/campusgrid:<commit-sha>
+```
+
+After the first successful workflow run, a repository owner must open the package settings once and change its visibility to **Public**. Then verify the exact submission path:
+
+```bash
+docker pull ghcr.io/abdullahnoman4146/campusgrid:latest
+docker run --rm -p 8080:8080 -e GROQ_API_KEY="your-api-key" ghcr.io/abdullahnoman4146/campusgrid:latest
+curl http://localhost:8080/health
 ```
 
 ---
@@ -167,14 +217,25 @@ The solution includes comprehensive unit and integration test suites:
 - Guardrail validation tests (untrusted LLM outputs, invalid ranges, non-ascending hours, invented parameters)
 - Request validation tests (400 Bad Request for malformed JSON, 422 Unprocessable Entity for semantic errors)
 - Physics tests (hourly energy balance, battery neutrality)
+- Reordered-hour regression coverage
+- Batched LLM response parsing and note-index validation
 
 Execute all tests:
 ```bash
 dotnet test tests/CampusGrid.Tests/CampusGrid.Tests.csproj
 ```
 
+The 10 public sample tests intentionally use the explicit test-only deterministic interpreter, so they validate the API, directives, optimizer, and replay logic without spending model quota. Before submission, separately run the public cases against the configured real model and record latency and interpretation accuracy.
+
+With the model-backed API running locally, execute:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify-live.ps1
+```
+
+This sends all 10 public cases through the real configured provider, compares directive meaning and optimal cost, and reports observed p95 latency.
+
 ---
-### chocolate
 
 ## API Documentation & Examples
 
@@ -305,10 +366,10 @@ Content-Type: application/json
 
 ## Evaluation Checklist & Compliance
 
-- [x] **Backend Only**: Zero frontend UI, pure HTTP REST API.
+- [x] **Judge Routes**: `GET /health` and `POST /optimize-energy` operate independently of the optional dashboard.
 - [x] **Endpoints**: `GET /health` and `POST /optimize-energy`.
 - [x] **Strict JSON Schema**: Exact camel_case/snake_case mapping per hackathon specification.
-- [x] **Paraphrase-Tolerant LLM**: Robust interpreter abstraction supporting OpenAI, Azure OpenAI, Local models, and NLP fallback.
+- [x] **Batched LLM Path**: All notes are interpreted in one provider call with strict parsing and deterministic guardrails.
 - [x] **Deterministic Guardrails**: Validates types, ranges, sorted ascending hours, solar factor, and prevents invented parameters.
 - [x] **Mathematical Optimization**: Google OR-Tools GLOP Linear Programming solver minimizing total grid cost under battery and directive constraints.
 - [x] **End-of-Day Neutrality**: $E_{23} = E_{initial}$ guaranteed.
@@ -316,3 +377,5 @@ Content-Type: application/json
 - [x] **All 10 Sample Cases Passing**: 100% test pass rate on official benchmark pack.
 - [x] **Docker Ready**: Multi-stage Linux container with non-root security.
 - [x] **Clean Error Handling**: 400 Bad Request, 422 Unprocessable Entity, and 500 without leaking secrets.
+- [ ] **Live-provider verification**: Requires a private Groq key and must be completed before submission.
+- [ ] **Public deployment and published Docker pull test**: Complete after choosing the team's host/image registry.

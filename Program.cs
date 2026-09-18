@@ -10,13 +10,20 @@ using CampusGrid.Validation;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Support hosts such as Render that provide a generic PORT variable.
+var hostPort = Environment.GetEnvironmentVariable("PORT");
+if (int.TryParse(hostPort, out var parsedPort) && parsedPort is > 0 and <= 65535 &&
+    string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    builder.WebHost.UseUrls($"http://0.0.0.0:{parsedPort}");
+}
+
 // 1. Configure JSON serialization with snake_case naming
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
         options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower;
         options.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
-        options.JsonSerializerOptions.NumberHandling = JsonNumberHandling.AllowNamedFloatingPointLiterals;
     });
 
 // 2. Custom 400 Bad Request response for model binding / deserialization errors
@@ -58,7 +65,6 @@ builder.Services.Configure<LLMOptions>(builder.Configuration.GetSection(LLMOptio
 
 // 5. HTTP Client & LLM Services
 builder.Services.AddHttpClient<LLMInterpreterService>();
-builder.Services.AddSingleton<SemanticRuleFallbackInterpreter>();
 builder.Services.AddScoped<ILLMInterpreter, LLMInterpreterService>();
 
 // 6. Validation Services

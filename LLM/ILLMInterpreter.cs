@@ -5,9 +5,8 @@ namespace CampusGrid.LLM;
 
 public interface ILLMInterpreter
 {
-    Task<DirectiveInterpretationDto> InterpretAsync(
-        string note,
-        int noteIndex = 0,
-        Battery? battery = null,
+    Task<IReadOnlyList<DirectiveInterpretationDto>> InterpretAllAsync(
+        IReadOnlyList<string> notes,
+        Battery battery,
         CancellationToken cancellationToken = default);
 }

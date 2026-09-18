@@ -10,10 +10,11 @@ public interface IScheduleValidator
 
 public class ScheduleValidator : IScheduleValidator
 {
-    private const double Tolerance = 0.05;
+    private const double Tolerance = 0.01;
 
     public void Validate(EnergyResponse response, EnergyRequest request, IEnumerable<DirectiveInterpretationDto> directives)
     {
+        request = EnergyRequestNormalizer.NormalizeHours(request);
         var errors = new List<string>();
 
         if (response.HourlyPlan == null || response.HourlyPlan.Count != 24)
@@ -93,6 +94,13 @@ public class ScheduleValidator : IScheduleValidator
             var plan = response.HourlyPlan[h];
             var hourData = request.Hours[h];
 
+            if (!double.IsFinite(plan.GridKwh) || !double.IsFinite(plan.SolarUsedKwh) ||
+                !double.IsFinite(plan.BatteryKwh) || !double.IsFinite(plan.BatteryEnergyAfterKwh))
+            {
+                errors.Add($"Hour {h}: all schedule numeric values must be finite.");
+                continue;
+            }
+
             if (plan.Hour != h)
             {
                 errors.Add($"Plan entry #{h} has mismatched hour {plan.Hour}. Expected {h}.");
@@ -106,6 +114,11 @@ public class ScheduleValidator : IScheduleValidator
             if (plan.SolarUsedKwh < -Tolerance)
             {
                 errors.Add($"Hour {h}: solar_used_kwh must be non-negative. Received {plan.SolarUsedKwh}.");
+            }
+
+            if (plan.BatteryKwh < -Tolerance)
+            {
+                errors.Add($"Hour {h}: battery_kwh must be non-negative. Received {plan.BatteryKwh}.");
             }
 
             if (plan.SolarUsedKwh > effectiveSolar[h] + Tolerance)
@@ -203,6 +216,12 @@ public class ScheduleValidator : IScheduleValidator
         }
 
         // Verify summary fields
+        if (!double.IsFinite(response.TotalGridKwh) || !double.IsFinite(response.TotalCostBdt) ||
+            !double.IsFinite(response.PeakGridKwh))
+        {
+            errors.Add("All response total fields must be finite numbers.");
+        }
+
         if (Math.Abs(response.TotalGridKwh - calculatedTotalGrid) > Tolerance)
         {
             errors.Add($"total_grid_kwh ({response.TotalGridKwh}) does not match sum of hourly grid ({calculatedTotalGrid}).");
